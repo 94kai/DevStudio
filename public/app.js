@@ -23,6 +23,8 @@ const elements = {
   send: $("#sendButton"),
   stop: $("#stopButton"),
   preview: $("#previewFrame"),
+  previewPanel: $("#previewPanel"),
+  fullscreen: $("#fullscreenButton"),
   projectPath: $("#projectPath"),
   sessionTitle: $("#sessionTitle"),
   chatSubtitle: $("#chatSubtitle"),
@@ -43,6 +45,34 @@ const elements = {
   tokenInput: $("#tokenInput"),
   toast: $("#toast")
 };
+
+let nativePreviewFullscreen = false;
+
+function setPreviewFullscreen(enabled) {
+  document.body.classList.toggle("preview-fullscreen", enabled);
+  elements.fullscreen.setAttribute("aria-pressed", String(enabled));
+  elements.fullscreen.setAttribute("aria-label", enabled ? "退出全屏预览" : "全屏预览");
+  elements.fullscreen.title = enabled ? "退出全屏" : "全屏预览";
+}
+
+async function togglePreviewFullscreen() {
+  const entering = !document.body.classList.contains("preview-fullscreen");
+  if (entering) {
+    setPreviewFullscreen(true);
+    if (elements.previewPanel.requestFullscreen) {
+      try {
+        await elements.previewPanel.requestFullscreen();
+        nativePreviewFullscreen = true;
+      } catch {
+        nativePreviewFullscreen = false;
+      }
+    }
+    return;
+  }
+  if (document.fullscreenElement) await document.exitFullscreen();
+  nativePreviewFullscreen = false;
+  setPreviewFullscreen(false);
+}
 
 function authUrl(path) {
   const url = new URL(path, window.location.origin);
@@ -452,6 +482,19 @@ $("#refreshButton").addEventListener("click", () => {
   elements.preview.src = authUrl(`/preview/?refresh=${Date.now()}`);
 });
 $("#openButton").addEventListener("click", () => window.open(authUrl("/preview/"), "_blank", "noopener"));
+elements.fullscreen.addEventListener("click", togglePreviewFullscreen);
+document.addEventListener("fullscreenchange", () => {
+  if (nativePreviewFullscreen && !document.fullscreenElement) {
+    nativePreviewFullscreen = false;
+    setPreviewFullscreen(false);
+  }
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && document.body.classList.contains("preview-fullscreen") && !document.fullscreenElement) {
+    nativePreviewFullscreen = false;
+    setPreviewFullscreen(false);
+  }
+});
 $("#settingsButton").addEventListener("click", () => {
   elements.tokenInput.value = token;
   elements.dialog.showModal();
