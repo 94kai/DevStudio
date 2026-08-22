@@ -44,7 +44,7 @@ pm2 save
 - `HOST`：监听地址，默认 `0.0.0.0`。
 - `PROJECT_DIR`：首次启动时的默认项目目录。
 - `PROJECTS_ROOT`：只填写项目名称时的创建根目录；默认是 DevStudio 同级的 `DevStudioProject`。
-- `PREVIEW_URL`：首次启动时默认项目的预览地址，可填写完整 URL 或端口号。
+- `PREVIEW_URL`：首次启动时默认项目的预览地址，可填写 HTTP/HTTPS URL 或端口号；HTTPS 上游允许自签名证书。
 - `DEVSTUDIO_TOKEN`：个人访问令牌；设置后启用整站登录校验，服务器部署时务必使用高强度随机值。
 - `CODEX_BIN`：Codex 可执行文件，默认 `codex`。
 - `CODEX_MODEL`：可选的 Codex 模型覆盖配置。

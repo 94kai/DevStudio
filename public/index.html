@@ -141,7 +141,7 @@
         <h3>创建或接入项目</h3>
         <label>项目名称<input id="projectNameInput" required maxlength="80" placeholder="例如：音乐下载器"></label>
         <label>项目路径<input id="projectPathInput" placeholder="可只填文件夹名称，例如 music-app"><small id="projectsRootHint"></small></label>
-        <label>预览地址<input id="projectPreviewInput" type="text" value="3000" placeholder="端口号或完整地址" required><small>只填 3000 等同于 http://127.0.0.1:3000</small></label>
+        <label>预览地址<input id="projectPreviewInput" type="text" value="3000" placeholder="端口号或 HTTP/HTTPS 地址" required><small>只填 3000 等同于 http://127.0.0.1:3000，HTTPS 支持自签名证书</small></label>
         <button class="primary-button" type="submit">创建并切换</button>
       </form>
     </div>
@@ -151,7 +151,7 @@
     <form class="dialog-card" id="projectPreviewForm">
       <div class="dialog-heading"><div><p class="eyebrow">PREVIEW</p><h2>预览设置</h2></div><button class="icon-button dialog-close" type="button" aria-label="关闭">×</button></div>
       <p class="dialog-subtitle" id="previewProjectName"></p>
-      <label>端口或预览地址<input id="editPreviewInput" type="text" required placeholder="例如 3000"><small>只填端口号时默认连接服务器本机的该端口</small></label>
+      <label>端口或预览地址<input id="editPreviewInput" type="text" required placeholder="例如 3000 或 https://example.test"><small>只填端口号时默认连接服务器本机的该端口，HTTPS 支持自签名证书</small></label>
       <div class="dialog-actions"><button class="quiet-button dialog-close" type="button">取消</button><button class="primary-button" type="submit">保存修改</button></div>
     </form>
   </dialog>

@@ -1,4 +1,5 @@
 import http from "node:http";
+import https from "node:https";
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
@@ -181,8 +182,8 @@ function parsePreviewUrl(value) {
     ? `http://127.0.0.1:${rawValue.replace(/^:/, "")}`
     : /^[\w.-]+:\d{1,5}$/.test(rawValue) ? `http://${rawValue}` : rawValue;
   const previewUrl = new URL(normalizedValue);
-  if (previewUrl.protocol !== "http:") throw new Error("预览地址目前只支持 http://");
-  const port = Number(previewUrl.port || 80);
+  if (!["http:", "https:"].includes(previewUrl.protocol)) throw new Error("预览地址只支持 http:// 或 https://");
+  const port = Number(previewUrl.port || (previewUrl.protocol === "https:" ? 443 : 80));
   if (port < 1 || port > 65535) throw new Error("预览端口必须在 1 到 65535 之间");
   return previewUrl;
 }
@@ -565,15 +566,18 @@ function serveStatic(request, response, pathname) {
 
 function proxyPreview(request, response, url) {
   const previewUrl = new URL(getActiveProject().previewUrl || DEFAULT_PREVIEW_URL);
+  const proxyClient = previewUrl.protocol === "https:" ? https : http;
   const suffix = url.pathname.replace(/^\/preview/, "") || "/";
   const targetPath = `${previewUrl.pathname.replace(/\/$/, "")}${suffix}${url.search}`;
-  const proxyRequest = http.request({
+  const proxyRequest = proxyClient.request({
     protocol: previewUrl.protocol,
     hostname: previewUrl.hostname,
     port: previewUrl.port,
     method: request.method,
     path: targetPath,
-    headers: { ...request.headers, host: previewUrl.host, "accept-encoding": "identity" }
+    headers: { ...request.headers, host: previewUrl.host, "accept-encoding": "identity" },
+    // 项目预览常使用本机自签名证书，因此 HTTPS 上游不校验证书。
+    ...(previewUrl.protocol === "https:" ? { rejectUnauthorized: false } : {})
   }, (proxyResponse) => {
     const headers = { ...proxyResponse.headers };
     delete headers["content-security-policy"];

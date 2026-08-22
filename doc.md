@@ -31,9 +31,10 @@ DevStudio 是供个人使用的浏览器开发工作台。后端运行 Codex App
 
 ### 2.3 项目预览
 
-- 预览地址支持完整 URL、纯端口号或 `:端口号`。
+- 预览地址支持 HTTP/HTTPS 完整 URL、纯端口号或 `:端口号`。
 - 例如 `3000` 会规范化为 `http://127.0.0.1:3000`。
-- 浏览器访问 `/preview/`，DevStudio 后端再把 HTTP 请求反向代理到项目预览地址。
+- 浏览器访问 `/preview/`，DevStudio 后端再把请求反向代理到项目预览地址。HTTP 上游使用 Node.js HTTP 客户端，HTTPS 上游使用 HTTPS 客户端。
+- HTTPS 上游固定关闭证书校验，以便访问本机或内网中使用自签名、过期或域名不匹配证书的开发服务。该行为只影响 DevStudio 到预览服务的连接，不影响用户浏览器到 DevStudio 的 HTTPS 配置。
 - 预览地址只是代理配置，目前不会自动注入 Codex 上下文，也不会自动启动项目开发服务。项目应在 `AGENTS.md`、用户需求或项目配置中明确启动端口，并自行运行对应服务。
 - 预览工具栏提供全屏按钮。支持时优先进入浏览器原生全屏；浏览器拒绝或不支持 Fullscreen API 时，仍会使用铺满网页视口的兼容模式。
 - 全屏模式隐藏 DevStudio 顶栏、底部导航、预览标题和设备边框，仅在右上角保留退出按钮；再次点击或按 `Escape` 可以退出。
@@ -167,7 +168,7 @@ DevStudio server.mjs
 | `HOST` | `0.0.0.0` | DevStudio 监听地址 |
 | `PROJECT_DIR` | DevStudio 当前目录 | 首次启动的默认项目目录 |
 | `PROJECTS_ROOT` | 同级 `DevStudioProject` | 名称或相对路径项目的根目录 |
-| `PREVIEW_URL` | 空 | 首次启动默认项目的预览地址 |
+| `PREVIEW_URL` | 空 | 首次启动默认项目的 HTTP/HTTPS 预览地址 |
 | `DEVSTUDIO_TOKEN` | 空 | 整站访问令牌；非空时启用登录校验 |
 | `CODEX_BIN` | `codex` | Codex 命令路径 |
 | `CODEX_MODEL` | 空 | 可选模型覆盖 |
@@ -185,6 +186,7 @@ DevStudio HTTP 端口固定为 `2005`，不接受环境变量覆盖。其他环�
 - 对公网开放时应设置高强度 `DEVSTUDIO_TOKEN`，并通过 Nginx、Caddy 等配置 HTTPS。
 - Codex 可以修改项目文件并执行命令，因此不要把服务暴露给不可信用户。
 - 预览代理能够访问服务器本机地址，项目预览地址只应由可信用户配置。
+- HTTPS 预览上游不校验证书真实性，存在中间人攻击风险，只适合可信本机或内网开发服务。
 
 ## 9. 当前限制
 
