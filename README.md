@@ -25,6 +25,20 @@ npm start
 
 默认访问地址为 `http://127.0.0.1:8787`。如果部署到服务器，建议在前面配置 HTTPS 反向代理，并设置 `DEVSTUDIO_TOKEN`。
 
+## PM2 自动启动
+
+服务器上可使用 PM2 常驻运行，并在系统重启后自动恢复：
+
+```bash
+npm install -g pm2
+cp .env.example .env
+npm run pm2:start
+pm2 startup
+pm2 save
+```
+
+执行 `pm2 startup` 后，还需要复制并执行它输出的带 `sudo` 命令，随后再运行 `pm2 save`。PM2 配置会从项目根目录读取 `.env`；修改环境变量后执行 `npm run pm2:restart` 使其生效。常用管理命令还有 `npm run pm2:logs` 和 `npm run pm2:stop`。
+
 ## 常用配置
 
 - `PORT`：DevStudio 服务端口，默认 `8787`。

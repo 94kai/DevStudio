@@ -79,6 +79,7 @@ DevStudio server.mjs
 - `AGENTS.md`：开发本项目时 Codex 自动读取的约定。
 - `template.md`：新项目 `AGENTS.md` 的源模板，支持项目变量占位符。
 - `.env.example`：环境变量示例。
+- `ecosystem.config.cjs`：PM2 进程定义，固定运行目录并加载项目根目录的 `.env`。
 
 `template.md` 支持以下占位符：
 
@@ -176,6 +177,9 @@ DevStudio server.mjs
 ## 8. 部署与安全
 
 - 后端要求 Node.js 20+ 和已登录的 Codex CLI/App Server。
+- 可通过 `npm run pm2:start` 按 `ecosystem.config.cjs` 启动单实例。进程异常退出后等待 3 秒自动重启，内存超过 1 GB 时自动重启。
+- PM2 配置启动时读取项目根目录的 `.env`；调用 PM2 的外部环境变量优先于文件内同名变量。修改配置后使用 `npm run pm2:restart` 和 `--update-env` 更新进程环境。
+- 系统级开机恢复需要先执行 `pm2 startup`，按其提示执行生成的系统命令，再执行 `pm2 save` 保存当前进程列表。该步骤与服务器的 init 系统和当前用户相关，不能仅靠仓库配置自动完成。
 - DevStudio 进程、Codex App Server 和项目开发服务是不同进程；正式部署时应分别使用进程管理器维护。
 - 对公网开放时应设置高强度 `DEVSTUDIO_TOKEN`，并通过 Nginx、Caddy 等配置 HTTPS。
 - Codex 可以修改项目文件并执行命令，因此不要把服务暴露给不可信用户。
