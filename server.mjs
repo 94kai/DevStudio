@@ -264,14 +264,50 @@ function readJson(request) {
   });
 }
 
-function isAuthorized(request, url) {
-  if (!ACCESS_TOKEN) return true;
-  const authorization = request.headers.authorization || "";
-  const cookies = Object.fromEntries((request.headers.cookie || "").split(";").map((item) => {
+function readForm(request) {
+  return new Promise((resolveBody, rejectBody) => {
+    let body = "";
+    request.on("data", (chunk) => {
+      body += chunk;
+      if (body.length > 16 * 1024) request.destroy();
+    });
+    request.on("end", () => resolveBody(new URLSearchParams(body)));
+    request.on("error", rejectBody);
+  });
+}
+
+function parseCookies(request) {
+  return Object.fromEntries((request.headers.cookie || "").split(";").map((item) => {
     const [key, ...parts] = item.trim().split("=");
     return [key, decodeURIComponent(parts.join("="))];
   }).filter(([key]) => key));
+}
+
+function isAuthorized(request, url) {
+  if (!ACCESS_TOKEN) return true;
+  const authorization = request.headers.authorization || "";
+  const cookies = parseCookies(request);
   return authorization === `Bearer ${ACCESS_TOKEN}` || url.searchParams.get("token") === ACCESS_TOKEN || cookies.devstudio_token === ACCESS_TOKEN;
+}
+
+function authCookie(request, value, maxAge = 60 * 60 * 24 * 30) {
+  const secure = request.socket.encrypted || request.headers["x-forwarded-proto"] === "https" ? "; Secure" : "";
+  return `devstudio_token=${encodeURIComponent(value)}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${maxAge}${secure}`;
+}
+
+function safeReturnPath(value) {
+  const path = String(value || "/");
+  return path.startsWith("/") && !path.startsWith("//") && !path.startsWith("/login") && !path.startsWith("/logout") ? path : "/";
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]);
+}
+
+function serveLogin(response, nextPath, invalid = false) {
+  const action = `/login?next=${encodeURIComponent(safeReturnPath(nextPath))}`;
+  response.writeHead(invalid ? 401 : 200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+  response.end(`<!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#f6f5f1"><title>登录 · DevStudio</title><style>:root{color-scheme:light}*{box-sizing:border-box}body{min-height:100dvh;margin:0;padding:24px;display:grid;place-items:center;background:#f6f5f1;color:#252522;font-family:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.card{width:min(420px,100%);padding:34px;border:1px solid #e8e6df;border-radius:22px;background:#fff;box-shadow:0 18px 55px rgba(52,46,39,.09)}.mark{width:42px;height:42px;margin-bottom:24px;border:1px solid #252522;border-radius:50%;display:flex;align-items:center;justify-content:center;gap:3px}.mark i{display:block;width:4px;border-radius:4px;background:#252522}.mark i:nth-child(1){height:10px}.mark i:nth-child(2){height:20px}.mark i:nth-child(3){height:14px}h1{margin:0;font:400 30px/1.2 Georgia,serif}p{margin:10px 0 25px;color:#7c7b74;font-size:13px;line-height:1.6}label{display:grid;gap:8px;color:#7c7b74;font-size:12px}input{width:100%;padding:13px 14px;border:1px solid ${invalid ? "#c9603f" : "#e8e6df"};border-radius:12px;outline:0;font:inherit}input:focus{border-color:#c9a99d}.error{margin:9px 0 0;color:#c9603f;font-size:11px}button{width:100%;margin-top:18px;padding:12px;border:0;border-radius:12px;background:#252522;color:#fff;font:inherit;cursor:pointer}@media(max-width:480px){body{padding:16px}.card{padding:27px 22px}}</style></head><body><main class="card"><div class="mark"><i></i><i></i><i></i></div><h1>访问 DevStudio</h1><p>请输入服务器访问令牌以继续。</p><form method="post" action="${escapeHtml(action)}"><label>访问令牌<input name="token" type="password" autocomplete="current-password" autofocus required></label>${invalid ? '<div class="error" role="alert">访问令牌不正确，请重试。</div>' : ""}<button type="submit">登录</button></form></main></body></html>`);
 }
 
 function broadcast(type, payload = {}) {
@@ -571,6 +607,27 @@ function proxyPreview(request, response, url) {
 const server = http.createServer(async (request, response) => {
   const url = new URL(request.url || "/", `http://${request.headers.host || "localhost"}`);
 
+  if (url.pathname === "/login") {
+    if (!ACCESS_TOKEN || isAuthorized(request, url)) {
+      response.writeHead(302, { location: safeReturnPath(url.searchParams.get("next")) });
+      return response.end();
+    }
+    if (request.method === "POST") {
+      const form = await readForm(request);
+      if (form.get("token") === ACCESS_TOKEN) {
+        response.writeHead(303, { location: safeReturnPath(url.searchParams.get("next")), "set-cookie": authCookie(request, ACCESS_TOKEN) });
+        return response.end();
+      }
+      return serveLogin(response, url.searchParams.get("next"), true);
+    }
+    return serveLogin(response, url.searchParams.get("next"));
+  }
+
+  if (url.pathname === "/logout") {
+    response.writeHead(303, { location: "/login", "set-cookie": authCookie(request, "", 0) });
+    return response.end();
+  }
+
   if (url.pathname.startsWith("/preview")) {
     if (!isAuthorized(request, url)) return sendJson(response, 401, { error: "访问令牌无效" });
     if (ACCESS_TOKEN && url.searchParams.get("token") === ACCESS_TOKEN) {
@@ -765,6 +822,11 @@ const server = http.createServer(async (request, response) => {
       return sendJson(response, 200, { reset: true, session: sessionSummary(session) });
     }
     return sendJson(response, 404, { error: "接口不存在" });
+  }
+
+  if (!isAuthorized(request, url)) {
+    response.writeHead(302, { location: `/login?next=${encodeURIComponent(safeReturnPath(`${url.pathname}${url.search}`))}`, "cache-control": "no-store" });
+    return response.end();
   }
 
   serveStatic(request, response, url.pathname);

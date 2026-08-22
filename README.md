@@ -23,7 +23,7 @@ cp .env.example .env
 npm start
 ```
 
-固定访问端口为 `2005`，默认地址为 `http://127.0.0.1:2005`。如果部署到服务器，建议在前面配置 HTTPS 反向代理，并设置 `DEVSTUDIO_TOKEN`。
+固定访问端口为 `2005`，默认地址为 `http://127.0.0.1:2005`。设置 `DEVSTUDIO_TOKEN` 后，未登录访问会跳转到令牌登录页，校验通过后才能加载工作台、API、实时事件及项目预览。服务器部署时应配合 HTTPS 反向代理。
 
 ## PM2 自动启动
 
@@ -45,7 +45,7 @@ pm2 save
 - `PROJECT_DIR`：首次启动时的默认项目目录。
 - `PROJECTS_ROOT`：只填写项目名称时的创建根目录；默认是 DevStudio 同级的 `DevStudioProject`。
 - `PREVIEW_URL`：首次启动时默认项目的预览地址，可填写完整 URL 或端口号。
-- `DEVSTUDIO_TOKEN`：个人访问令牌，建议服务器部署时务必设置。
+- `DEVSTUDIO_TOKEN`：个人访问令牌；设置后启用整站登录校验，服务器部署时务必使用高强度随机值。
 - `CODEX_BIN`：Codex 可执行文件，默认 `codex`。
 - `CODEX_MODEL`：可选的 Codex 模型覆盖配置。
 - `CODEX_SANDBOX`：Codex 沙箱模式，默认 `workspace-write`。

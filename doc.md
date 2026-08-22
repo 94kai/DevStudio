@@ -6,7 +6,7 @@
 
 DevStudio 是供个人使用的浏览器开发工作台。后端运行 Codex App Server，前端负责发送需求、展示执行过程、切换项目和会话，并预览正在开发的 Web 项目。
 
-系统不对接 SSO。服务器部署时通过 `DEVSTUDIO_TOKEN` 提供简单的个人访问保护，生产环境仍应配合 HTTPS 和网络访问控制。
+系统不对接 SSO。服务器部署时通过 `DEVSTUDIO_TOKEN` 提供整站个人访问保护，生产环境仍应配合 HTTPS 和网络访问控制。
 
 ## 2. 当前功能
 
@@ -139,6 +139,8 @@ DevStudio server.mjs
 
 | 方法 | 路径 | 用途 |
 | --- | --- | --- |
+| GET / POST | `/login` | 展示登录页或校验访问令牌并写入登录 Cookie |
+| GET | `/logout` | 清除登录 Cookie 并返回登录页 |
 | GET | `/api/state` | 获取当前项目、会话和运行状态 |
 | GET | `/api/projects` | 获取项目列表 |
 | POST | `/api/projects` | 创建项目 |
@@ -156,7 +158,7 @@ DevStudio server.mjs
 | POST | `/api/session/reset` | 兼容旧前端的新会话接口 |
 | ALL | `/preview/*` | 代理当前项目的预览服务 |
 
-设置 `DEVSTUDIO_TOKEN` 后，前端和 API 请求需要携带对应令牌。
+设置 `DEVSTUDIO_TOKEN` 后，匿名页面请求会重定向到 `/login`，校验通过后写入有效期 30 天、`HttpOnly`、`SameSite=Strict`、作用于全站的 Cookie。HTTPS 或反向代理声明 `X-Forwarded-Proto: https` 时 Cookie 同时带 `Secure`。静态资源、API、SSE 和 `/preview/*` 均执行令牌校验；API 未授权时返回 JSON 401，页面未授权时进入登录页。`/logout` 用于清除登录 Cookie。未设置令牌时保持无认证模式，便于仅限本机的开发环境使用。
 
 ## 7. 环境变量
 
@@ -166,7 +168,7 @@ DevStudio server.mjs
 | `PROJECT_DIR` | DevStudio 当前目录 | 首次启动的默认项目目录 |
 | `PROJECTS_ROOT` | 同级 `DevStudioProject` | 名称或相对路径项目的根目录 |
 | `PREVIEW_URL` | 空 | 首次启动默认项目的预览地址 |
-| `DEVSTUDIO_TOKEN` | 空 | 个人访问令牌 |
+| `DEVSTUDIO_TOKEN` | 空 | 整站访问令牌；非空时启用登录校验 |
 | `CODEX_BIN` | `codex` | Codex 命令路径 |
 | `CODEX_MODEL` | 空 | 可选模型覆盖 |
 | `CODEX_SANDBOX` | `workspace-write` | Codex 沙箱模式 |
@@ -192,6 +194,7 @@ DevStudio HTTP 端口固定为 `2005`，不接受环境变量覆盖。其他环�
 - 中间执行事件不会在网络重连后完整补发。
 - 激活项目、激活会话和运行中的 Codex 任务尚未按用户或浏览器隔离。
 - 当前访问令牌是个人使用场景下的轻量保护，不是完整账号和权限系统。
+- 登录 Cookie 直接代表当前访问令牌，不支持多用户、角色、单独吊销某一设备或服务端会话列表；修改 `DEVSTUDIO_TOKEN` 可使已有登录全部失效。
 
 ## 10. 文档维护约定
 
