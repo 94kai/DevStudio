@@ -23,7 +23,7 @@ cp .env.example .env
 npm start
 ```
 
-默认访问地址为 `http://127.0.0.1:8787`。如果部署到服务器，建议在前面配置 HTTPS 反向代理，并设置 `DEVSTUDIO_TOKEN`。
+固定访问端口为 `2005`，默认地址为 `http://127.0.0.1:2005`。如果部署到服务器，建议在前面配置 HTTPS 反向代理，并设置 `DEVSTUDIO_TOKEN`。
 
 ## PM2 自动启动
 
@@ -41,7 +41,6 @@ pm2 save
 
 ## 常用配置
 
-- `PORT`：DevStudio 服务端口，默认 `8787`。
 - `HOST`：监听地址，默认 `0.0.0.0`。
 - `PROJECT_DIR`：首次启动时的默认项目目录。
 - `PROJECTS_ROOT`：只填写项目名称时的创建根目录；默认是 DevStudio 同级的 `DevStudioProject`。

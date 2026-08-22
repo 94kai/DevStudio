@@ -162,7 +162,6 @@ DevStudio server.mjs
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
-| `PORT` | `8787` | DevStudio HTTP 端口 |
 | `HOST` | `0.0.0.0` | DevStudio 监听地址 |
 | `PROJECT_DIR` | DevStudio 当前目录 | 首次启动的默认项目目录 |
 | `PROJECTS_ROOT` | 同级 `DevStudioProject` | 名称或相对路径项目的根目录 |
@@ -172,7 +171,7 @@ DevStudio server.mjs
 | `CODEX_MODEL` | 空 | 可选模型覆盖 |
 | `CODEX_SANDBOX` | `workspace-write` | Codex 沙箱模式 |
 
-环境变量主要用于首次初始化和进程级配置。创建后的项目路径、会话和预览地址以 `.devstudio/state.json` 中的值为准。
+DevStudio HTTP 端口固定为 `2005`，不接受环境变量覆盖。其他环境变量主要用于首次初始化和进程级配置。创建后的项目路径、会话和预览地址以 `.devstudio/state.json` 中的值为准。
 
 ## 8. 部署与安全
 
