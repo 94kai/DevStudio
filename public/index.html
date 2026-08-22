@@ -87,7 +87,10 @@
       <section class="panel files-panel" id="filesPanel" aria-label="项目文件">
         <div class="files-heading">
           <div><p class="eyebrow">PROJECT FILES</p><h1>项目文件</h1><p id="filesProjectPath">正在读取当前项目…</p></div>
-          <button class="quiet-button" id="filesRefreshButton" type="button"><svg viewBox="0 0 24 24"><path d="M20 11a8.1 8.1 0 1 0-2.3 5.7M20 4v7h-7"/></svg>刷新</button>
+          <div class="files-heading-actions">
+            <button class="quiet-button" id="toggleHiddenFilesButton" type="button" aria-pressed="false" title="显示隐藏文件"><svg viewBox="0 0 24 24"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.5"/></svg><span>显示隐藏</span></button>
+            <button class="quiet-button" id="filesRefreshButton" type="button" title="刷新文件"><svg viewBox="0 0 24 24"><path d="M20 11a8.1 8.1 0 1 0-2.3 5.7M20 4v7h-7"/></svg><span>刷新</span></button>
+          </div>
         </div>
         <div class="files-workspace">
           <aside class="file-tree-wrap">
@@ -141,7 +144,7 @@
         <h3>创建或接入项目</h3>
         <label>项目名称<input id="projectNameInput" required maxlength="80" placeholder="例如：音乐下载器"></label>
         <label>项目路径<input id="projectPathInput" placeholder="可只填文件夹名称，例如 music-app"><small id="projectsRootHint"></small></label>
-        <label>预览地址<input id="projectPreviewInput" type="text" value="3000" placeholder="端口号或 HTTP/HTTPS 地址" required><small>只填 3000 等同于 http://127.0.0.1:3000，HTTPS 支持自签名证书</small></label>
+        <label>预览地址<input id="projectPreviewInput" type="url" placeholder="例如 https://preview.example.com" required><small>iframe 会直接访问该完整地址，必须能从当前浏览器打开</small></label>
         <button class="primary-button" type="submit">创建并切换</button>
       </form>
     </div>
@@ -151,7 +154,7 @@
     <form class="dialog-card" id="projectPreviewForm">
       <div class="dialog-heading"><div><p class="eyebrow">PREVIEW</p><h2>预览设置</h2></div><button class="icon-button dialog-close" type="button" aria-label="关闭">×</button></div>
       <p class="dialog-subtitle" id="previewProjectName"></p>
-      <label>端口或预览地址<input id="editPreviewInput" type="text" required placeholder="例如 3000 或 https://example.test"><small>只填端口号时默认连接服务器本机的该端口，HTTPS 支持自签名证书</small></label>
+      <label>预览地址<input id="editPreviewInput" type="url" required placeholder="例如 https://preview.example.com"><small>iframe 会直接访问该完整地址，必须能从当前浏览器打开</small></label>
       <div class="dialog-actions"><button class="quiet-button dialog-close" type="button">取消</button><button class="primary-button" type="submit">保存修改</button></div>
     </form>
   </dialog>

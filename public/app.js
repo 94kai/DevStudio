@@ -10,6 +10,7 @@ let availableProjects = [];
 let availableSessions = [];
 let selectedFile = null;
 let fileTreeLoadedFor = null;
+let showHiddenFiles = false;
 
 const elements = {
   connection: $("#connection"),
@@ -80,6 +81,12 @@ function authUrl(path) {
   return url.toString();
 }
 
+function previewTarget(refresh = false) {
+  const url = new URL(currentProject?.previewUrl || "about:blank", window.location.origin);
+  if (refresh) url.searchParams.set("_devstudio_refresh", Date.now());
+  return url.toString();
+}
+
 async function api(path, options = {}) {
   const headers = { ...options.headers };
   if (token) headers.Authorization = `Bearer ${token}`;
@@ -146,18 +153,6 @@ function renderProjects() {
     });
     elements.projectsList.append(button);
   }
-}
-
-function editablePreviewValue(previewUrl) {
-  try {
-    const parsed = new URL(previewUrl);
-    if (["127.0.0.1", "localhost"].includes(parsed.hostname) && parsed.pathname === "/" && !parsed.search && !parsed.hash) {
-      return parsed.port || "80";
-    }
-  } catch {
-    return previewUrl || "";
-  }
-  return previewUrl || "";
 }
 
 function renderSessions() {
@@ -234,14 +229,15 @@ function renderFileNodes(nodes, container) {
 }
 
 async function loadProjectFiles(force = false) {
-  if (!force && fileTreeLoadedFor === currentProject?.id) return;
+  const treeCacheKey = `${currentProject?.id}:${showHiddenFiles}`;
+  if (!force && fileTreeLoadedFor === treeCacheKey) return;
   elements.fileTree.innerHTML = `<div class="file-tree-empty">正在读取项目文件…</div>`;
   try {
-    const data = await api("/api/files");
+    const data = await api(`/api/files?showHidden=${showHiddenFiles}`);
     elements.fileTree.replaceChildren();
     renderFileNodes(data.files || [], elements.fileTree);
     if (!data.files?.length) elements.fileTree.innerHTML = `<div class="file-tree-empty">项目还是空的<br>可以先创建 AGENTS.md</div>`;
-    fileTreeLoadedFor = currentProject?.id;
+    fileTreeLoadedFor = treeCacheKey;
   } catch (error) {
     elements.fileTree.innerHTML = `<div class="file-tree-empty"></div>`;
     elements.fileTree.firstElementChild.textContent = error.message;
@@ -387,7 +383,7 @@ function connectEvents() {
     appendProgress(payload.taskId, String(payload.text || "").trim(), "output");
   });
   eventSource.addEventListener("task-complete", () => {
-    elements.preview.src = authUrl(`/preview/?refresh=${Date.now()}`);
+    elements.preview.src = previewTarget(true);
     showToast("开发完成，预览已更新");
   });
   eventSource.addEventListener("status", (event) => {
@@ -415,7 +411,7 @@ async function loadState() {
     elements.chatSubtitle.textContent = `${currentProject?.name || "当前项目"} · ${availableSessions.length} 个会话`;
     elements.modelBadge.querySelector("span").textContent = state.model || "默认模型";
     setStatus(state.status);
-    elements.preview.src = authUrl(state.previewUrl);
+    elements.preview.src = previewTarget();
     selectedFile = null;
     fileTreeLoadedFor = null;
     elements.fileEditor.classList.add("hidden");
@@ -479,9 +475,9 @@ document.querySelectorAll(".tab").forEach((tab) => {
 });
 
 $("#refreshButton").addEventListener("click", () => {
-  elements.preview.src = authUrl(`/preview/?refresh=${Date.now()}`);
+  elements.preview.src = previewTarget(true);
 });
-$("#openButton").addEventListener("click", () => window.open(authUrl("/preview/"), "_blank", "noopener"));
+$("#openButton").addEventListener("click", () => window.open(previewTarget(), "_blank", "noopener"));
 elements.fullscreen.addEventListener("click", togglePreviewFullscreen);
 document.addEventListener("fullscreenchange", () => {
   if (nativePreviewFullscreen && !document.fullscreenElement) {
@@ -515,7 +511,7 @@ $("#editProjectPreviewButton").addEventListener("click", () => {
   if (!currentProject) return;
   elements.projectsDialog.close();
   $("#previewProjectName").textContent = `${currentProject.name} · ${currentProject.path}`;
-  $("#editPreviewInput").value = editablePreviewValue(currentProject.previewUrl);
+  $("#editPreviewInput").value = currentProject.previewUrl;
   elements.projectPreviewDialog.showModal();
   $("#editPreviewInput").focus();
 });
@@ -553,13 +549,20 @@ $("#createProjectForm").addEventListener("submit", async (event) => {
       })
     });
     form.reset();
-    $("#projectPreviewInput").value = "3000";
     elements.projectsDialog.close();
     await loadState();
     showToast(`项目 ${result.project.name} 已就绪`);
   } catch (error) { showToast(error.message); }
 });
 $("#filesRefreshButton").addEventListener("click", () => loadProjectFiles(true));
+$("#toggleHiddenFilesButton").addEventListener("click", () => {
+  showHiddenFiles = !showHiddenFiles;
+  const button = $("#toggleHiddenFilesButton");
+  button.setAttribute("aria-pressed", String(showHiddenFiles));
+  button.title = showHiddenFiles ? "隐藏点号文件" : "显示隐藏文件";
+  button.querySelector("span").textContent = showHiddenFiles ? "隐藏文件" : "显示隐藏";
+  loadProjectFiles(true);
+});
 $("#saveFileButton").addEventListener("click", saveSelectedFile);
 $("#createAgentsButton").addEventListener("click", async () => {
   if (await openProjectFile("AGENTS.md", null, true)) return;

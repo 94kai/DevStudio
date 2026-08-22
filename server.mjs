@@ -1,5 +1,4 @@
 import http from "node:http";
-import https from "node:https";
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
@@ -52,7 +51,8 @@ function loadState() {
     if (Array.isArray(parsed.projects) && parsed.projects.length) {
       const projects = parsed.projects.map((project) => {
         const sessions = Array.isArray(project.sessions) && project.sessions.length ? project.sessions : [createSession()];
-        return { ...project, sessions, activeSessionId: sessions.some((session) => session.id === project.activeSessionId) ? project.activeSessionId : sessions[0].id };
+        const { previewMode, ...projectData } = project;
+        return { ...projectData, sessions, activeSessionId: sessions.some((session) => session.id === project.activeSessionId) ? project.activeSessionId : sessions[0].id };
       });
       const activeProject = projects.find((project) => project.id === parsed.activeProjectId) || projects[0];
       const activeSession = activeProject.sessions.find((session) => session.id === parsed.activeSessionId || session.id === activeProject.activeSessionId) || activeProject.sessions[0];
@@ -143,10 +143,10 @@ function getActiveSession() {
 
 function saveState() {
   writeFileSync(STATE_FILE, JSON.stringify({
-    projects: state.projects.map((project) => ({
-      ...project,
-      sessions: project.sessions.map((session) => ({ ...session, messages: session.messages.slice(-100) }))
-    })),
+    projects: state.projects.map((project) => {
+      const { previewMode, ...projectData } = project;
+      return { ...projectData, sessions: project.sessions.map((session) => ({ ...session, messages: session.messages.slice(-100) })) };
+    }),
     activeProjectId: state.activeProjectId,
     activeSessionId: state.activeSessionId
   }, null, 2));
@@ -178,10 +178,7 @@ function sessionSummary(session) {
 
 function parsePreviewUrl(value) {
   const rawValue = String(value || DEFAULT_PREVIEW_URL).trim();
-  const normalizedValue = /^:?\d{1,5}$/.test(rawValue)
-    ? `http://127.0.0.1:${rawValue.replace(/^:/, "")}`
-    : /^[\w.-]+:\d{1,5}$/.test(rawValue) ? `http://${rawValue}` : rawValue;
-  const previewUrl = new URL(normalizedValue);
+  const previewUrl = new URL(rawValue);
   if (!["http:", "https:"].includes(previewUrl.protocol)) throw new Error("预览地址只支持 http:// 或 https://");
   const port = Number(previewUrl.port || (previewUrl.protocol === "https:" ? 443 : 80));
   if (port < 1 || port > 65535) throw new Error("预览端口必须在 1 到 65535 之间");
@@ -196,14 +193,12 @@ function resolveProjectFile(relativePath = "") {
   return filePath;
 }
 
-function listProjectFiles() {
-  const ignored = new Set([".git", "node_modules", ".devstudio", "dist", "build"]);
+function listProjectFiles(showHiddenFiles = false) {
   let count = 0;
   function walk(directory, relativeDirectory = "", depth = 0) {
     if (depth > 4 || count >= 600) return [];
     return readdirSync(directory, { withFileTypes: true })
-      .filter((entry) => !entry.name.startsWith(".") || entry.name === ".env.example")
-      .filter((entry) => !ignored.has(entry.name) && !entry.isSymbolicLink())
+      .filter((entry) => (showHiddenFiles || !entry.name.startsWith(".")) && !entry.isSymbolicLink())
       .sort((first, second) => Number(second.isDirectory()) - Number(first.isDirectory()) || first.name.localeCompare(second.name, "zh-CN", { numeric: true }))
       .map((entry) => {
         count += 1;
@@ -564,50 +559,6 @@ function serveStatic(request, response, pathname) {
   response.end(readFileSync(filePath));
 }
 
-function proxyPreview(request, response, url) {
-  const previewUrl = new URL(getActiveProject().previewUrl || DEFAULT_PREVIEW_URL);
-  const proxyClient = previewUrl.protocol === "https:" ? https : http;
-  const suffix = url.pathname.replace(/^\/preview/, "") || "/";
-  const targetPath = `${previewUrl.pathname.replace(/\/$/, "")}${suffix}${url.search}`;
-  const proxyRequest = proxyClient.request({
-    protocol: previewUrl.protocol,
-    hostname: previewUrl.hostname,
-    port: previewUrl.port,
-    method: request.method,
-    path: targetPath,
-    headers: { ...request.headers, host: previewUrl.host, "accept-encoding": "identity" },
-    // 项目预览常使用本机自签名证书，因此 HTTPS 上游不校验证书。
-    ...(previewUrl.protocol === "https:" ? { rejectUnauthorized: false } : {})
-  }, (proxyResponse) => {
-    const headers = { ...proxyResponse.headers };
-    delete headers["content-security-policy"];
-    delete headers["x-frame-options"];
-    const isHtml = String(headers["content-type"] || "").includes("text/html");
-    if (!isHtml) {
-      response.writeHead(proxyResponse.statusCode || 502, headers);
-      proxyResponse.pipe(response);
-      return;
-    }
-    const chunks = [];
-    proxyResponse.on("data", (chunk) => chunks.push(chunk));
-    proxyResponse.on("end", () => {
-      let html = Buffer.concat(chunks).toString("utf8");
-      html = html.replace(/<(head)([^>]*)>/i, `<$1$2><base href="/preview/">`)
-        .replace(/(src|href|action)="\/(?!preview\/)/g, `$1="/preview/`)
-        .replace(/(src|href|action)='\/(?!preview\/)/g, `$1='/preview/`);
-      delete headers["content-length"];
-      headers["content-length"] = Buffer.byteLength(html);
-      response.writeHead(proxyResponse.statusCode || 502, headers);
-      response.end(html);
-    });
-  });
-  proxyRequest.on("error", () => {
-    response.writeHead(502, { "content-type": "text/html; charset=utf-8" });
-    response.end(`<!doctype html><meta name="viewport" content="width=device-width"><style>body{font-family:system-ui;background:#f4f2ed;color:#272522;display:grid;place-items:center;height:100vh;margin:0;text-align:center}.box{max-width:360px;padding:32px}h2{font-size:20px}p{color:#777;line-height:1.6}</style><div class="box"><h2>预览服务尚未启动</h2><p>请让 Codex 启动项目，或检查 PREVIEW_URL 是否指向正确端口。</p></div>`);
-  });
-  request.pipe(proxyRequest);
-}
-
 const server = http.createServer(async (request, response) => {
   const url = new URL(request.url || "/", `http://${request.headers.host || "localhost"}`);
 
@@ -632,14 +583,6 @@ const server = http.createServer(async (request, response) => {
     return response.end();
   }
 
-  if (url.pathname.startsWith("/preview")) {
-    if (!isAuthorized(request, url)) return sendJson(response, 401, { error: "访问令牌无效" });
-    if (ACCESS_TOKEN && url.searchParams.get("token") === ACCESS_TOKEN) {
-      response.setHeader("set-cookie", `devstudio_token=${encodeURIComponent(ACCESS_TOKEN)}; HttpOnly; SameSite=Lax; Path=/preview`);
-    }
-    return proxyPreview(request, response, url);
-  }
-
   if (url.pathname.startsWith("/api/")) {
     if (!isAuthorized(request, url)) return sendJson(response, 401, { error: "访问令牌无效" });
     if (request.method === "GET" && url.pathname === "/api/state") {
@@ -657,7 +600,7 @@ const server = http.createServer(async (request, response) => {
         sessions: project.sessions.map(sessionSummary).sort((first, second) => second.updatedAt.localeCompare(first.updatedAt)),
         projectDir: project.path,
         projectsRoot: PROJECTS_ROOT,
-        previewUrl: "/preview/"
+        previewUrl: project.previewUrl
       });
     }
     if (request.method === "GET" && url.pathname === "/api/projects") {
@@ -760,7 +703,7 @@ const server = http.createServer(async (request, response) => {
     }
     if (request.method === "GET" && url.pathname === "/api/files") {
       try {
-        return sendJson(response, 200, { files: listProjectFiles(), project: projectSummary(getActiveProject()) });
+        return sendJson(response, 200, { files: listProjectFiles(url.searchParams.get("showHidden") === "true"), project: projectSummary(getActiveProject()) });
       } catch (error) {
         return sendJson(response, 500, { error: error.message });
       }

@@ -133,6 +133,7 @@ body.preview-fullscreen .device-frame iframe { border-radius: 0; }
 
 .files-panel { flex-direction: column; padding: 28px clamp(16px, 4vw, 46px) 18px; max-width: 1440px; margin: auto; }
 .files-heading { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 18px; }
+.files-heading-actions { display: flex; gap: 8px; }
 .files-heading h1 { margin: 0; font-size: 34px; }
 .files-heading p:last-child { margin: 6px 0 0; color: var(--muted); font-size: 11px; max-width: 62vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .files-workspace { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(220px, 300px) 1fr; border: 1px solid var(--line); border-radius: 18px; overflow: hidden; background: rgba(255,255,255,.72); box-shadow: var(--shadow); }
@@ -244,6 +245,9 @@ dialog::backdrop { background: rgba(35,33,29,.26); backdrop-filter: blur(4px); }
   .files-heading { min-width: 0; gap: 8px; }
   .files-heading > div { min-width: 0; }
   .files-heading h1 { font-size: 27px; }
+  .files-heading-actions { flex: 0 0 auto; gap: 4px; }
+  .files-heading-actions .quiet-button { width: 38px; height: 38px; padding: 0; justify-content: center; }
+  .files-heading-actions .quiet-button span { display: none; }
   .files-workspace { grid-template-columns: 120px 1fr; border-radius: 13px; }
   .file-tree-toolbar { padding: 0 8px; }
   .file-tree-toolbar button { font-size: 0; padding: 6px; }

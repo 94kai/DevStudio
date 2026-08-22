@@ -20,7 +20,7 @@ DevStudio 是供个人使用的浏览器开发工作台。后端运行 Codex App
 
 ### 2.2 项目管理
 
-- 支持创建项目、切换项目和修改已有项目的预览地址。
+- 支持创建项目、切换项目，以及在前端修改已有项目的预览地址。
 - 创建项目时只填写名称，会在 `PROJECTS_ROOT` 下创建对应目录。
 - 相对路径同样相对于 `PROJECTS_ROOT`；绝对路径直接使用。
 - 默认 `PROJECTS_ROOT` 是 DevStudio 所在目录的上一级中的 `DevStudioProject`。
@@ -31,20 +31,21 @@ DevStudio 是供个人使用的浏览器开发工作台。后端运行 Codex App
 
 ### 2.3 项目预览
 
-- 预览地址支持 HTTP/HTTPS 完整 URL、纯端口号或 `:端口号`。
-- 例如 `3000` 会规范化为 `http://127.0.0.1:3000`。
-- 浏览器访问 `/preview/`，DevStudio 后端再把请求反向代理到项目预览地址。HTTP 上游使用 Node.js HTTP 客户端，HTTPS 上游使用 HTTPS 客户端。
-- HTTPS 上游固定关闭证书校验，以便访问本机或内网中使用自签名、过期或域名不匹配证书的开发服务。该行为只影响 DevStudio 到预览服务的连接，不影响用户浏览器到 DevStudio 的 HTTPS 配置。
-- 预览地址只是代理配置，目前不会自动注入 Codex 上下文，也不会自动启动项目开发服务。项目应在 `AGENTS.md`、用户需求或项目配置中明确启动端口，并自行运行对应服务。
+- 预览地址要求使用完整的 HTTP/HTTPS URL，不再接受纯端口号或主机端口简写，避免 iframe 在外部设备上错误访问该设备自身的环回地址。
+- iframe 始终直接加载项目的 `previewUrl`，DevStudio 后端不代理请求、不附加令牌，也不改写 HTML 或资源路径。
+- 预览地址必须能从用户浏览器访问。DevStudio 为 HTTPS 时不能嵌入 HTTP 页面；HTTPS 证书必须被浏览器信任；目标服务也不能通过 `X-Frame-Options` 或 CSP `frame-ancestors` 禁止嵌入。
+- 预览地址不会自动注入 Codex 上下文，也不会自动启动项目开发服务。项目应在 `AGENTS.md`、用户需求或项目配置中明确启动端口，并自行运行对应服务。
 - 预览工具栏提供全屏按钮。支持时优先进入浏览器原生全屏；浏览器拒绝或不支持 Fullscreen API 时，仍会使用铺满网页视口的兼容模式。
 - 全屏模式隐藏 DevStudio 顶栏、底部导航、预览标题和设备边框，仅在右上角保留退出按钮；再次点击或按 `Escape` 可以退出。
 
 ### 2.4 文件浏览
 
-- “项目文件”页展示当前项目中的文本文件。
+- “项目文件”页默认展示所有非隐藏目录和文件，工具栏的“显示隐藏”按钮可切换展示以 `.` 开头的文件和目录，包括 `.env`、`.git`、`.devstudio` 等，不再设置名称白名单或忽略目录。
+- 为控制文件树规模，文件树最大递归 4 层、最多读取 600 项。符号链接仍不展示，避免通过链接越出项目路径；大型 `node_modules` 或 `.git` 可能较早耗尽数量上限。
 - 普通文本文件只读预览。
 - `AGENTS.md` 可以在线创建和编辑。
 - 保存 `AGENTS.md` 后，后续 Codex turn 会重新恢复线程，使新的项目指令生效。
+- `.env` 等隐藏文件可能包含令牌或密码，任何通过 DevStudio 登录校验的用户都可以在文件页读取这些内容。
 
 ### 2.5 移动端布局
 
@@ -60,19 +61,17 @@ DevStudio 是供个人使用的浏览器开发工作台。后端运行 Codex App
 
 ```text
 浏览器
-  ├─ HTTP API：项目、会话、文件和任务操作
-  ├─ SSE：接收 Codex 实时事件
-  └─ /preview/*：访问项目预览
+  ├─ iframe ──> 当前项目 previewUrl 对应的外部服务
+  └─ HTTP API / SSE
           │
 DevStudio server.mjs
   ├─ .devstudio/state.json：持久化项目、会话和消息
-  ├─ Codex App Server：常驻 stdio JSON-RPC 子进程
-  └─ Preview Proxy：转发到当前项目 previewUrl
+  └─ Codex App Server：常驻 stdio JSON-RPC 子进程
 ```
 
 主要文件：
 
-- `server.mjs`：HTTP 服务、状态持久化、Codex App Server 客户端和预览代理。
+- `server.mjs`：HTTP 服务、状态持久化和 Codex App Server 客户端。
 - `public/index.html`：页面结构。
 - `public/app.js`：前端状态、接口调用、SSE 和交互逻辑。
 - `public/styles.css`：桌面端和移动端样式。
@@ -157,9 +156,8 @@ DevStudio server.mjs
 | POST | `/api/tasks` | 提交 Codex 开发需求 |
 | POST | `/api/stop` | 中断当前任务 |
 | POST | `/api/session/reset` | 兼容旧前端的新会话接口 |
-| ALL | `/preview/*` | 代理当前项目的预览服务 |
 
-设置 `DEVSTUDIO_TOKEN` 后，匿名页面请求会重定向到 `/login`，校验通过后写入有效期 30 天、`HttpOnly`、`SameSite=Strict`、作用于全站的 Cookie。HTTPS 或反向代理声明 `X-Forwarded-Proto: https` 时 Cookie 同时带 `Secure`。静态资源、API、SSE 和 `/preview/*` 均执行令牌校验；API 未授权时返回 JSON 401，页面未授权时进入登录页。`/logout` 用于清除登录 Cookie。未设置令牌时保持无认证模式，便于仅限本机的开发环境使用。
+设置 `DEVSTUDIO_TOKEN` 后，匿名页面请求会重定向到 `/login`，校验通过后写入有效期 30 天、`HttpOnly`、`SameSite=Strict`、作用于全站的 Cookie。HTTPS 或反向代理声明 `X-Forwarded-Proto: https` 时 Cookie 同时带 `Secure`。静态资源、API 和 SSE 均执行令牌校验；API 未授权时返回 JSON 401，页面未授权时进入登录页。`/logout` 用于清除登录 Cookie。未设置令牌时保持无认证模式，便于仅限本机的开发环境使用。iframe 目标不经过 DevStudio，必须由目标服务自行控制访问权限。
 
 ## 7. 环境变量
 
@@ -185,12 +183,11 @@ DevStudio HTTP 端口固定为 `2005`，不接受环境变量覆盖。其他环�
 - DevStudio 进程、Codex App Server 和项目开发服务是不同进程；正式部署时应分别使用进程管理器维护。
 - 对公网开放时应设置高强度 `DEVSTUDIO_TOKEN`，并通过 Nginx、Caddy 等配置 HTTPS。
 - Codex 可以修改项目文件并执行命令，因此不要把服务暴露给不可信用户。
-- 预览代理能够访问服务器本机地址，项目预览地址只应由可信用户配置。
-- HTTPS 预览上游不校验证书真实性，存在中间人攻击风险，只适合可信本机或内网开发服务。
+- iframe 会直接连接配置的外部地址，项目预览地址只应由可信用户配置。
 
 ## 9. 当前限制
 
-- 预览代理主要支持普通 HTTP 请求，尚未专门处理 WebSocket/HMR 转发。
+- iframe 预览受浏览器混合内容、证书信任、目标页面 iframe 策略和网络可达性限制；填写 `127.0.0.1` 时访问的是浏览器所在设备，而不是 DevStudio 服务器。
 - DevStudio 不负责启动、重启或监控项目自身的开发服务器。
 - 预览端口不会自动告知 Codex。
 - 中间执行事件不会在网络重连后完整补发。
