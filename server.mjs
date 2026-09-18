@@ -10,6 +10,7 @@ const ROOT_DIR = fileURLToPath(new URL(".", import.meta.url));
 const PUBLIC_DIR = join(ROOT_DIR, "public");
 const DATA_DIR = join(ROOT_DIR, ".devstudio");
 const STATE_FILE = join(DATA_DIR, "state.json");
+const UPLOAD_DIR = join(DATA_DIR, "uploads");
 const PROJECT_TEMPLATE_FILE = join(ROOT_DIR, "template.md");
 const PORT = 2005;
 const HOST = process.env.HOST || "0.0.0.0";
@@ -22,6 +23,7 @@ const CODEX_MODEL = process.env.CODEX_MODEL || "";
 const CODEX_SANDBOX = process.env.CODEX_SANDBOX || "danger-full-access";
 
 mkdirSync(DATA_DIR, { recursive: true });
+mkdirSync(UPLOAD_DIR, { recursive: true });
 
 let state = loadState();
 let activeProcess = null;
@@ -242,12 +244,12 @@ function sendJson(response, status, data) {
   response.end(JSON.stringify(data));
 }
 
-function readJson(request) {
+function readJson(request, maxBytes = 1024 * 1024) {
   return new Promise((resolveBody, rejectBody) => {
     let body = "";
     request.on("data", (chunk) => {
       body += chunk;
-      if (body.length > 1024 * 1024) request.destroy();
+      if (body.length > maxBytes) request.destroy(new Error("请求内容过大"));
     });
     request.on("end", () => {
       try {
@@ -257,6 +259,36 @@ function readJson(request) {
       }
     });
     request.on("error", rejectBody);
+  });
+}
+
+function saveTaskImages(items) {
+  if (!Array.isArray(items)) return [];
+  if (items.length > 4) throw new Error("每次最多发送 4 张图片");
+  const formats = {
+    "image/jpeg": { extension: ".jpg", valid: (buffer) => buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff },
+    "image/png": { extension: ".png", valid: (buffer) => buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) },
+    "image/webp": { extension: ".webp", valid: (buffer) => buffer.subarray(0, 4).toString() === "RIFF" && buffer.subarray(8, 12).toString() === "WEBP" }
+  };
+  return items.map((item) => {
+    const mimeType = String(item?.type || "").toLowerCase();
+    const format = formats[mimeType];
+    if (!format) throw new Error("图片只支持 JPEG、PNG 或 WebP");
+    const encoded = String(item?.data || "");
+    if (!encoded || encoded.length > 11 * 1024 * 1024) throw new Error("单张图片不能超过 8MB");
+    const buffer = Buffer.from(encoded, "base64");
+    if (!buffer.length || buffer.length > 8 * 1024 * 1024 || !format.valid(buffer)) throw new Error("图片内容无效或超过 8MB");
+    const filename = `${randomUUID()}${format.extension}`;
+    const path = join(UPLOAD_DIR, filename);
+    writeFileSync(path, buffer);
+    return {
+      path,
+      messageAttachment: {
+        name: String(item?.name || "图片").slice(0, 120),
+        mimeType,
+        url: `/api/uploads/${filename}`
+      }
+    };
   });
 }
 
@@ -516,18 +548,21 @@ async function ensureThread() {
   return session.threadId;
 }
 
-function runTask(prompt) {
+function runTask(prompt, images = []) {
   const taskId = `${Date.now()}`;
   activeTask = { taskId, turnId: null };
   state.status = "running";
-  addMessage("user", prompt, { taskId });
+  addMessage("user", prompt || "发送了图片", { taskId, attachments: images.map((image) => image.messageAttachment) });
   broadcast("status", { status: state.status, taskId });
   void (async () => {
     try {
       const threadId = await ensureThread();
       const result = await rpcCall("turn/start", {
         threadId,
-        input: [{ type: "text", text: prompt, text_elements: [] }]
+        input: [
+          ...(prompt ? [{ type: "text", text: prompt, text_elements: [] }] : []),
+          ...images.map((image) => ({ type: "localImage", path: image.path, detail: "auto" }))
+        ]
       });
       if (activeTask?.taskId === taskId) activeTask.turnId = result.turn.id;
     } catch (error) {
@@ -585,6 +620,14 @@ const server = http.createServer(async (request, response) => {
 
   if (url.pathname.startsWith("/api/")) {
     if (!isAuthorized(request, url)) return sendJson(response, 401, { error: "访问令牌无效" });
+    if (request.method === "GET" && url.pathname.startsWith("/api/uploads/")) {
+      const filename = basename(url.pathname);
+      const filePath = join(UPLOAD_DIR, filename);
+      if (!/^[0-9a-f-]+\.(jpg|png|webp)$/i.test(filename) || !existsSync(filePath)) return sendJson(response, 404, { error: "图片不存在" });
+      const contentType = filename.endsWith(".png") ? "image/png" : filename.endsWith(".webp") ? "image/webp" : "image/jpeg";
+      response.writeHead(200, { "content-type": contentType, "cache-control": "private, max-age=86400", "x-content-type-options": "nosniff" });
+      return response.end(readFileSync(filePath));
+    }
     if (request.method === "GET" && url.pathname === "/api/state") {
       const project = getActiveProject();
       const session = getActiveSession();
@@ -738,11 +781,12 @@ const server = http.createServer(async (request, response) => {
     if (request.method === "POST" && url.pathname === "/api/tasks") {
       if (activeTask) return sendJson(response, 409, { error: "已有任务正在执行，请等待完成或先停止任务" });
       try {
-        const body = await readJson(request);
+        const body = await readJson(request, 45 * 1024 * 1024);
         const prompt = String(body.prompt || "").trim();
-        if (!prompt) return sendJson(response, 400, { error: "请输入开发需求" });
+        const images = saveTaskImages(body.images);
+        if (!prompt && !images.length) return sendJson(response, 400, { error: "请输入开发需求或添加图片" });
         if (prompt.length > 20000) return sendJson(response, 400, { error: "需求内容过长" });
-        return sendJson(response, 202, { taskId: runTask(prompt) });
+        return sendJson(response, 202, { taskId: runTask(prompt, images) });
       } catch (error) {
         return sendJson(response, 400, { error: error.message });
       }

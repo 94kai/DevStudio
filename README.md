@@ -6,8 +6,8 @@ DevStudio 是一个面向个人服务器的轻量开发工作台，通过浏览�
 
 当前界面包含三个主要功能：
 
-- **对话开发**：连接常驻的 Codex App Server，展示执行过程，并按项目保存、切换会话。
-- **项目预览**：由 iframe 直接加载项目 URL，并支持浏览器原生全屏与铺满视口的兼容模式。
+- **对话开发**：连接常驻的 Codex App Server，支持文本、图片选择和截图粘贴，展示执行过程，并按项目保存、切换会话。
+- **项目预览**：默认首页，由覆盖整个页面的 iframe 直接加载项目 URL，可通过可拖动的半透明圆形按钮返回对话开发。
 - **项目文件**：浏览项目中的全部目录和文件，可切换显示隐藏项，并在线创建或编辑 `AGENTS.md`。
 
 支持创建和切换多个项目。不同项目拥有各自独立的会话列表与预览地址，预览地址可在前端修改。
@@ -46,11 +46,11 @@ pm2 save
 - `PROJECTS_ROOT`：只填写项目名称时的创建根目录；默认是 DevStudio 同级的 `DevStudioProject`。
 - `PREVIEW_URL`：首次启动时默认项目的完整 HTTP/HTTPS 预览 URL；该地址必须能从用户浏览器直接访问。
 - `DEVSTUDIO_TOKEN`：个人访问令牌；设置后启用整站登录校验，服务器部署时务必使用高强度随机值。
-- `CODEX_BIN`：Codex 可执行文件，默认 `codex`。
+- `CODEX_BIN`：Codex 可执行文件，默认 `codex`。使用 fnm、nvm 等版本管理器并通过 PM2 启动时，建议配置为对应 Node 版本安装目录中的绝对路径，避免临时 shell PATH 失效。
 - `CODEX_MODEL`：可选的 Codex 模型覆盖配置。
 - `CODEX_SANDBOX`：Codex 沙箱模式，默认 `workspace-write`。
 
-项目、会话和聊天记录保存在 `.devstudio/state.json`。Codex App Server 会在 DevStudio 运行期间常驻；项目的开发服务仍需由项目自身启动。
+项目、会话和聊天记录保存在 `.devstudio/state.json`，对话图片保存在 `.devstudio/uploads/`。Codex App Server 会在 DevStudio 运行期间常驻；项目的开发服务仍需由项目自身启动。
 
 更完整的架构、数据结构、接口和已知限制见 [doc.md](./doc.md)。
 

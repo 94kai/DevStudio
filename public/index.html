@@ -7,7 +7,7 @@
   <title>DevStudio</title>
   <link rel="stylesheet" href="/styles.css">
 </head>
-<body>
+<body class="preview-page">
   <div class="app-shell">
     <header class="topbar">
       <a class="brand" href="#" aria-label="DevStudio 首页">
@@ -25,7 +25,7 @@
     </header>
 
     <main>
-      <section class="panel active" id="chatPanel" aria-label="对话开发">
+      <section class="panel" id="chatPanel" aria-label="对话开发">
         <div class="chat-heading">
           <div>
             <h1 id="sessionTitle">今天想做点什么？</h1>
@@ -52,8 +52,11 @@
 
         <div class="composer-wrap">
           <form class="composer" id="composer">
+            <div class="pending-images hidden" id="pendingImages" aria-label="待发送图片"></div>
             <textarea id="promptInput" rows="1" maxlength="20000" placeholder="描述你的需求…" aria-label="开发需求"></textarea>
             <div class="composer-footer">
+              <input class="hidden" id="imageInput" type="file" accept="image/jpeg,image/png,image/webp" multiple>
+              <button class="attach-button" id="attachButton" type="button" aria-label="添加图片" title="添加图片"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/><rect x="3" y="3" width="18" height="18" rx="4"/></svg></button>
               <span class="hint"><kbd>⌘</kbd><kbd>↵</kbd> 发送</span>
               <button class="send-button" id="sendButton" type="submit" aria-label="发送">
                 <svg viewBox="0 0 24 24"><path d="m5 12 7-7 7 7M12 19V5"/></svg>
@@ -64,24 +67,13 @@
         </div>
       </section>
 
-      <section class="panel preview-panel" id="previewPanel" aria-label="项目预览">
-        <div class="preview-toolbar">
-          <div class="preview-title">
-            <span class="live-dot"></span>
-            <div><strong>项目预览</strong><span id="projectPath">正在读取项目…</span></div>
-          </div>
-          <div class="preview-actions">
-            <button class="icon-button" id="refreshButton" title="刷新预览" aria-label="刷新预览"><svg viewBox="0 0 24 24"><path d="M20 11a8.1 8.1 0 1 0-2.3 5.7M20 4v7h-7"/></svg></button>
-            <button class="icon-button" id="openButton" title="新窗口打开" aria-label="新窗口打开"><svg viewBox="0 0 24 24"><path d="M14 5h5v5M19 5l-8 8M19 14v5H5V5h5"/></svg></button>
-            <button class="icon-button fullscreen-button" id="fullscreenButton" type="button" title="全屏预览" aria-label="全屏预览" aria-pressed="false">
-              <svg class="fullscreen-enter-icon" viewBox="0 0 24 24"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></svg>
-              <svg class="fullscreen-exit-icon" viewBox="0 0 24 24"><path d="M9 3v6H3M15 3v6h6M9 21v-6H3M15 21v-6h6"/></svg>
-            </button>
-          </div>
-        </div>
+      <section class="panel preview-panel active" id="previewPanel" aria-label="项目预览">
         <div class="device-frame">
           <iframe id="previewFrame" title="项目预览"></iframe>
         </div>
+        <button class="preview-back-button" id="previewBackButton" type="button" aria-label="返回对话开发" title="返回开发（可拖动）">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 8-4 4 4 4M15 8l4 4-4 4M14 5l-4 14"/></svg>
+        </button>
       </section>
 
       <section class="panel files-panel" id="filesPanel" aria-label="项目文件">
@@ -111,11 +103,11 @@
     </main>
 
     <nav class="tabbar" aria-label="主导航">
-      <button class="tab active" data-panel="chatPanel">
+      <button class="tab" data-panel="chatPanel">
         <svg viewBox="0 0 24 24"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z"/><path d="M8 9h8M8 13h5"/></svg>
         <span>对话开发</span>
       </button>
-      <button class="tab" data-panel="previewPanel">
+      <button class="tab active" data-panel="previewPanel">
         <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M7 6.5h.01M10 6.5h.01"/></svg>
         <span>项目预览</span>
       </button>

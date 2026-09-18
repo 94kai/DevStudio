@@ -14,6 +14,8 @@ DevStudio 是供个人使用的浏览器开发工作台。后端运行 Codex App
 
 - 后端启动一个常驻的 `codex app-server --listen stdio://` 子进程。
 - 前端提交需求后，后端通过 JSON-RPC 创建或恢复线程，再启动 Codex turn。
+- 输入区支持选择图片或粘贴剪贴板截图，发送前可预览和移除。每轮最多 4 张，每张最大 8MB，仅支持 JPEG、PNG 和 WebP。
+- 后端校验图片类型和文件签名后保存到 `.devstudio/uploads/`，通过 App Server 的 `localImage` 输入与文本一起发送给 Codex；也允许只发送图片。
 - Codex 的状态、文本和工具执行过程通过 SSE 实时发送到浏览器。
 - Codex 工作期间输入区不可输入，可通过停止按钮中断当前任务。
 - 项目与会话一一归属；切换项目后只显示该项目的会话。
@@ -35,8 +37,9 @@ DevStudio 是供个人使用的浏览器开发工作台。后端运行 Codex App
 - iframe 始终直接加载项目的 `previewUrl`，DevStudio 后端不代理请求、不附加令牌，也不改写 HTML 或资源路径。
 - 预览地址必须能从用户浏览器访问。DevStudio 为 HTTPS 时不能嵌入 HTTP 页面；HTTPS 证书必须被浏览器信任；目标服务也不能通过 `X-Frame-Options` 或 CSP `frame-ancestors` 禁止嵌入。
 - 预览地址不会自动注入 Codex 上下文，也不会自动启动项目开发服务。项目应在 `AGENTS.md`、用户需求或项目配置中明确启动端口，并自行运行对应服务。
-- 预览工具栏提供全屏按钮。支持时优先进入浏览器原生全屏；浏览器拒绝或不支持 Fullscreen API 时，仍会使用铺满网页视口的兼容模式。
-- 全屏模式隐藏 DevStudio 顶栏、底部导航、预览标题和设备边框，仅在右上角保留退出按钮；再次点击或按 `Escape` 可以退出。
+- 点击“项目预览”后，预览面板以普通 iframe 覆盖整个网页视口，不调用浏览器 Fullscreen API。
+- DevStudio 打开或刷新时默认进入项目预览，而不是对话开发。
+- 预览状态不展示 DevStudio 顶栏、底部导航、预览工具栏或设备边框，仅叠加一个半透明圆形返回按钮；按钮支持鼠标和触屏拖动、记忆位置，点击后直接回到“对话开发”。
 
 ### 2.4 文件浏览
 
@@ -53,7 +56,7 @@ DevStudio 是供个人使用的浏览器开发工作台。后端运行 Codex App
 - 手机顶栏隐藏品牌文字和模型徽标，只保留项目选择、连接状态与设置入口，避免固定控件共同撑宽页面。
 - 聊天页不展示 `AI DEVELOPMENT SPACE` 英文眉题，会话标题在所有尺寸下均保持单行并在过长时省略。
 - 手机以及高度不超过 `720px` 的矮屏设备会隐藏副说明、缩小标题，并压缩顶栏、底栏和顶部留白；因此折叠屏展开后不会仅因宽度增加而恢复大标题。
-- 预览工具栏允许标题区域收缩并截断长路径，操作按钮保持固定触控尺寸。
+- 预览页的圆形返回按钮尺寸接近 44px，支持拖到不遮挡内容的位置，并会在视口尺寸变化时避免落到屏幕外。
 - 对话标题、文件区域和弹窗中的长文本均允许所在容器收缩，内部需要横向查看的代码或文件树不扩大页面宽度。
 - 桌面端聊天面板最大宽度为 `1180px`，在空间利用率和左右视线移动距离之间取中间值；单条消息正文仍保留适合阅读的行宽。
 
@@ -76,6 +79,7 @@ DevStudio server.mjs
 - `public/app.js`：前端状态、接口调用、SSE 和交互逻辑。
 - `public/styles.css`：桌面端和移动端样式。
 - `.devstudio/state.json`：运行时生成的持久化状态。
+- `.devstudio/uploads/`：对话上传的原始图片，文件名使用随机 UUID，运行时生成且不进入 Git。
 - `AGENTS.md`：开发本项目时 Codex 自动读取的约定。
 - `template.md`：新项目 `AGENTS.md` 的源模板，支持项目变量占位符。
 - `.env.example`：环境变量示例。
@@ -109,7 +113,19 @@ DevStudio server.mjs
           "id": "session-id",
           "title": "会话标题",
           "threadId": "codex-thread-id",
-          "messages": []
+          "messages": [
+            {
+              "role": "user",
+              "content": "请参考这张截图",
+              "attachments": [
+                {
+                  "name": "screenshot.png",
+                  "mimeType": "image/png",
+                  "url": "/api/uploads/random-id.png"
+                }
+              ]
+            }
+          ]
         }
       ]
     }
@@ -120,6 +136,7 @@ DevStudio server.mjs
 实现约束：
 
 - 聊天消息会持久化，每个会话最多保留最近 100 条。
+- 图片元数据随用户消息持久化，原文件由 `.devstudio/uploads/` 提供；读取图片同样需要通过 DevStudio 令牌校验。
 - Codex 的中间进度事件只实时推送，不完整持久化，也不会在断线重连后全部重放。
 - 不同浏览器读取同一份服务端状态，因此可以看到历史项目、会话和消息。
 - 当前激活项目和激活会话是服务端全局状态；多个浏览器同时操作时会相互影响。
@@ -153,7 +170,8 @@ DevStudio server.mjs
 | GET | `/api/file` | 读取文本文件 |
 | PUT | `/api/file` | 保存允许编辑的文件，目前仅 `AGENTS.md` |
 | GET | `/api/events` | 建立 SSE 实时事件连接 |
-| POST | `/api/tasks` | 提交 Codex 开发需求 |
+| POST | `/api/tasks` | 提交文本及 Base64 图片，启动 Codex 开发任务 |
+| GET | `/api/uploads/:filename` | 读取已登录用户上传的对话图片 |
 | POST | `/api/stop` | 中断当前任务 |
 | POST | `/api/session/reset` | 兼容旧前端的新会话接口 |
 
@@ -168,7 +186,7 @@ DevStudio server.mjs
 | `PROJECTS_ROOT` | 同级 `DevStudioProject` | 名称或相对路径项目的根目录 |
 | `PREVIEW_URL` | 空 | 首次启动默认项目的 HTTP/HTTPS 预览地址 |
 | `DEVSTUDIO_TOKEN` | 空 | 整站访问令牌；非空时启用登录校验 |
-| `CODEX_BIN` | `codex` | Codex 命令路径 |
+| `CODEX_BIN` | `codex` | Codex 命令路径；通过 PM2 配合 fnm、nvm 等版本管理器运行时建议填写稳定的绝对路径，避免 PM2 保留的临时 shell PATH 失效 |
 | `CODEX_MODEL` | 空 | 可选模型覆盖 |
 | `CODEX_SANDBOX` | `workspace-write` | Codex 沙箱模式 |
 
@@ -191,6 +209,7 @@ DevStudio HTTP 端口固定为 `2005`，不接受环境变量覆盖。其他环�
 - DevStudio 不负责启动、重启或监控项目自身的开发服务器。
 - 预览端口不会自动告知 Codex。
 - 中间执行事件不会在网络重连后完整补发。
+- 上传图片目前不会自动回收，长期使用时 `.devstudio/uploads/` 可能持续增长，需要管理员按需清理无用文件。
 - 激活项目、激活会话和运行中的 Codex 任务尚未按用户或浏览器隔离。
 - 当前访问令牌是个人使用场景下的轻量保护，不是完整账号和权限系统。
 - 登录 Cookie 直接代表当前访问令牌，不支持多用户、角色、单独吊销某一设备或服务端会话列表；修改 `DEVSTUDIO_TOKEN` 可使已有登录全部失效。

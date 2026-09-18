@@ -72,6 +72,8 @@ h1, h2 { font-family: Georgia, "Times New Roman", serif; font-weight: 400; }
 .message.assistant .message-bubble::before { content: "✦"; position: absolute; left: 4px; top: 3px; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; color: var(--accent); background: var(--accent-soft); }
 .message.system .message-bubble { color: var(--accent); font-size: 13px; }
 .message-time { display: block; color: #aaa69d; font-size: 10px; margin-top: 6px; }
+.message-images { display: grid; grid-template-columns: repeat(2, minmax(0, 180px)); gap: 7px; margin-top: 9px; }
+.message-images img { display: block; width: 100%; max-height: 180px; object-fit: cover; border-radius: 10px; }
 
 .progress-box { margin: 2px 0 20px; border: 1px solid var(--line); border-radius: 14px; background: rgba(255,255,255,.55); overflow: hidden; animation: rise .25s ease-out; }
 .progress-heading { width: 100%; border: 0; background: transparent; display: flex; align-items: center; gap: 9px; padding: 11px 13px; cursor: pointer; text-align: left; }
@@ -98,6 +100,14 @@ h1, h2 { font-family: Georgia, "Times New Roman", serif; font-weight: 400; }
 .composer textarea { display: block; width: 100%; max-height: 140px; resize: none; border: 0; outline: 0; background: transparent; color: var(--ink); line-height: 1.5; padding: 2px 0 8px; }
 .composer textarea::placeholder { color: #a9a69f; }
 .composer-footer { display: flex; justify-content: flex-end; align-items: center; min-height: 34px; }
+.pending-images { display: flex; gap: 8px; overflow-x: auto; padding: 0 0 10px; }
+.pending-image { position: relative; width: 64px; height: 64px; flex: 0 0 auto; }
+.pending-image img { width: 100%; height: 100%; display: block; object-fit: cover; border-radius: 10px; }
+.pending-image button { position: absolute; top: -5px; right: -5px; width: 20px; height: 20px; border: 2px solid #fff; border-radius: 50%; background: var(--ink); color: #fff; display: grid; place-items: center; padding: 0; cursor: pointer; line-height: 1; }
+.attach-button { width: 34px; height: 34px; margin-right: 8px; border: 0; border-radius: 11px; background: transparent; color: var(--muted); display: grid; place-items: center; cursor: pointer; }
+.attach-button:hover { background: var(--accent-soft); color: var(--accent); }
+.attach-button:disabled { opacity: .4; cursor: default; }
+.attach-button svg { width: 19px; }
 .hint { margin-right: auto; color: #aaa69e; font-size: 10px; }
 kbd { font-family: inherit; border: 1px solid #dedbd4; border-radius: 4px; padding: 1px 4px; background: #faf9f7; }
 .send-button, .stop-button { width: 34px; height: 34px; border: 0; border-radius: 11px; background: var(--accent); color: white; display: grid; place-items: center; cursor: pointer; }
@@ -107,29 +117,19 @@ kbd { font-family: inherit; border: 1px solid #dedbd4; border-radius: 4px; paddi
 .stop-button i { width: 10px; height: 10px; border-radius: 2px; background: white; }
 .hidden { display: none !important; }
 
-.preview-panel { flex-direction: column; padding: 22px clamp(14px, 3vw, 34px) 16px; }
-.preview-toolbar { display: flex; justify-content: space-between; align-items: center; max-width: 1440px; width: 100%; margin: 0 auto 14px; }
-.preview-title { min-width: 0; display: flex; align-items: center; gap: 12px; }
-.preview-title > div { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.preview-actions { flex: 0 0 auto; }
-.preview-title strong { font-family: Georgia, serif; font-weight: 400; font-size: 17px; }
-.preview-title span:last-child { font-size: 10px; color: var(--muted); max-width: 52vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.device-frame { flex: 1; min-height: 0; width: 100%; max-width: 1440px; margin: auto; padding: 8px; background: #272724; border-radius: 20px; box-shadow: 0 20px 55px rgba(36, 34, 31, .16); }
-.device-frame iframe { border: 0; background: white; width: 100%; height: 100%; border-radius: 13px; display: block; }
-.fullscreen-exit-icon { display: none; }
-body.preview-fullscreen { overflow: hidden; background: #fff; }
-body.preview-fullscreen .topbar, body.preview-fullscreen .tabbar { display: none; }
-body.preview-fullscreen main { position: fixed; inset: 0; height: 100dvh; z-index: 50; }
-body.preview-fullscreen .panel:not(#previewPanel) { display: none; }
-body.preview-fullscreen #previewPanel { display: flex; position: fixed; inset: 0; padding: 0; background: #fff; z-index: 51; }
-body.preview-fullscreen .preview-toolbar { position: fixed; top: max(12px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); width: auto; margin: 0; padding: 0; z-index: 53; pointer-events: none; }
-body.preview-fullscreen .preview-title, body.preview-fullscreen #refreshButton, body.preview-fullscreen #openButton { display: none; }
-body.preview-fullscreen .fullscreen-button { width: 44px; height: 44px; color: #fff; background: rgba(25, 25, 23, .72); border: 1px solid rgba(255,255,255,.22); box-shadow: 0 8px 24px rgba(0,0,0,.2); backdrop-filter: blur(14px); pointer-events: auto; }
-body.preview-fullscreen .fullscreen-button:hover { background: rgba(25, 25, 23, .88); }
-body.preview-fullscreen .fullscreen-enter-icon { display: none; }
-body.preview-fullscreen .fullscreen-exit-icon { display: block; }
-body.preview-fullscreen .device-frame { width: 100%; max-width: none; height: 100%; margin: 0; padding: 0; border-radius: 0; background: #fff; box-shadow: none; }
-body.preview-fullscreen .device-frame iframe { border-radius: 0; }
+.preview-panel { flex-direction: column; }
+.device-frame { flex: 1; min-height: 0; width: 100%; }
+.device-frame iframe { border: 0; background: white; width: 100%; height: 100%; display: block; }
+body.preview-page { overflow: hidden; background: #fff; }
+body.preview-page .topbar, body.preview-page .tabbar { display: none; }
+body.preview-page main { position: fixed; inset: 0; height: 100dvh; z-index: 50; }
+body.preview-page .panel:not(#previewPanel) { display: none; }
+body.preview-page #previewPanel { display: flex; position: fixed; inset: 0; background: #fff; z-index: 51; }
+.preview-back-button { position: fixed; top: max(14px, env(safe-area-inset-top)); right: max(14px, env(safe-area-inset-right)); z-index: 53; width: 42px; height: 42px; border: 1px solid rgba(255,255,255,.14); border-radius: 50%; padding: 0; display: none; align-items: center; justify-content: center; color: rgba(255,255,255,.82); background: rgba(25,25,23,.14); box-shadow: 0 3px 12px rgba(0,0,0,.06); backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px); cursor: grab; touch-action: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+.preview-back-button:hover, .preview-back-button:active, .preview-back-button:focus { background: rgba(25,25,23,.14); }
+.preview-back-button:active { cursor: grabbing; }
+.preview-back-button svg { width: 19px; pointer-events: none; }
+body.preview-page .preview-back-button { display: flex; }
 
 .files-panel { flex-direction: column; padding: 28px clamp(16px, 4vw, 46px) 18px; max-width: 1440px; margin: auto; }
 .files-heading { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 18px; }
@@ -232,15 +232,8 @@ dialog::backdrop { background: rgba(35,33,29,.26); backdrop-filter: blur(4px); }
   .empty-state h2 { font-size: 20px; }
   .hint { display: none; }
   .message-bubble { max-width: 88%; }
-  .preview-panel { padding: 12px 0 0; }
-  .preview-toolbar { min-width: 0; gap: 6px; padding: 0 10px; margin-bottom: 10px; }
-  .preview-title { gap: 8px; }
-  .preview-title span:last-child { max-width: calc(100vw - 184px); }
-  .preview-actions { gap: 2px; }
-  .preview-actions .icon-button { width: 36px; height: 36px; }
-  .device-frame { padding: 0; border-radius: 0; box-shadow: none; }
-  .device-frame iframe { border-radius: 0; }
-  body.preview-fullscreen .preview-toolbar { padding: 0; margin: 0; }
+  .message-images { grid-template-columns: repeat(2, minmax(0, 130px)); }
+  .preview-back-button { top: max(10px, env(safe-area-inset-top)); right: max(10px, env(safe-area-inset-right)); }
   .files-panel { padding: 16px 12px 10px; }
   .files-heading { min-width: 0; gap: 8px; }
   .files-heading > div { min-width: 0; }

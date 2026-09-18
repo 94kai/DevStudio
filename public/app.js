@@ -1,5 +1,6 @@
 const $ = (selector) => document.querySelector(selector);
 const tokenKey = "devstudio-token";
+const previewBackPositionKey = "devstudio-preview-back-position";
 let token = localStorage.getItem(tokenKey) || "";
 let eventSource = null;
 let currentStatus = "idle";
@@ -11,6 +12,7 @@ let availableSessions = [];
 let selectedFile = null;
 let fileTreeLoadedFor = null;
 let showHiddenFiles = false;
+let pendingImages = [];
 
 const elements = {
   connection: $("#connection"),
@@ -23,10 +25,9 @@ const elements = {
   input: $("#promptInput"),
   send: $("#sendButton"),
   stop: $("#stopButton"),
+  imageInput: $("#imageInput"),
+  pendingImages: $("#pendingImages"),
   preview: $("#previewFrame"),
-  previewPanel: $("#previewPanel"),
-  fullscreen: $("#fullscreenButton"),
-  projectPath: $("#projectPath"),
   sessionTitle: $("#sessionTitle"),
   chatSubtitle: $("#chatSubtitle"),
   projectsDialog: $("#projectsDialog"),
@@ -46,34 +47,6 @@ const elements = {
   tokenInput: $("#tokenInput"),
   toast: $("#toast")
 };
-
-let nativePreviewFullscreen = false;
-
-function setPreviewFullscreen(enabled) {
-  document.body.classList.toggle("preview-fullscreen", enabled);
-  elements.fullscreen.setAttribute("aria-pressed", String(enabled));
-  elements.fullscreen.setAttribute("aria-label", enabled ? "退出全屏预览" : "全屏预览");
-  elements.fullscreen.title = enabled ? "退出全屏" : "全屏预览";
-}
-
-async function togglePreviewFullscreen() {
-  const entering = !document.body.classList.contains("preview-fullscreen");
-  if (entering) {
-    setPreviewFullscreen(true);
-    if (elements.previewPanel.requestFullscreen) {
-      try {
-        await elements.previewPanel.requestFullscreen();
-        nativePreviewFullscreen = true;
-      } catch {
-        nativePreviewFullscreen = false;
-      }
-    }
-    return;
-  }
-  if (document.fullscreenElement) await document.exitFullscreen();
-  nativePreviewFullscreen = false;
-  setPreviewFullscreen(false);
-}
 
 function authUrl(path) {
   const url = new URL(path, window.location.origin);
@@ -115,6 +88,8 @@ function setStatus(status) {
   elements.send.classList.toggle("hidden", running);
   elements.stop.classList.toggle("hidden", !running);
   elements.input.disabled = running;
+  elements.imageInput.disabled = running;
+  $("#attachButton").disabled = running;
   setConnection(status === "error" ? "offline" : "online", running ? "Codex 工作中" : status === "error" ? "任务异常" : "已连接");
 }
 
@@ -284,7 +259,26 @@ function appendMessage(message, shouldScroll = true) {
   row.dataset.messageId = message.id;
   const bubble = document.createElement("div");
   bubble.className = "message-bubble";
-  bubble.textContent = message.content;
+  const content = document.createElement("span");
+  content.textContent = message.content;
+  bubble.append(content);
+  if (message.attachments?.length) {
+    const gallery = document.createElement("div");
+    gallery.className = "message-images";
+    for (const attachment of message.attachments) {
+      const link = document.createElement("a");
+      link.href = authUrl(attachment.url);
+      link.target = "_blank";
+      link.rel = "noopener";
+      const image = document.createElement("img");
+      image.src = authUrl(attachment.url);
+      image.alt = attachment.name || "用户图片";
+      image.loading = "lazy";
+      link.append(image);
+      gallery.append(link);
+    }
+    bubble.append(gallery);
+  }
   const time = document.createElement("span");
   time.className = "message-time";
   time.textContent = formatTime(message.createdAt);
@@ -403,7 +397,6 @@ async function loadState() {
     renderMessages(state.messages || []);
     renderProjects();
     renderSessions();
-    elements.projectPath.textContent = state.projectDir;
     elements.filesProjectPath.textContent = state.projectDir;
     $("#projectsRootHint").textContent = `相对路径会创建在 ${state.projectsRoot}`;
     elements.projectButtonName.textContent = currentProject?.name || "项目";
@@ -430,15 +423,69 @@ function resizeInput() {
   elements.input.style.height = `${Math.min(elements.input.scrollHeight, 140)}px`;
 }
 
+function renderPendingImages() {
+  elements.pendingImages.replaceChildren();
+  elements.pendingImages.classList.toggle("hidden", !pendingImages.length);
+  pendingImages.forEach((item, index) => {
+    const card = document.createElement("div");
+    card.className = "pending-image";
+    const image = document.createElement("img");
+    image.src = item.previewUrl;
+    image.alt = item.name;
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.setAttribute("aria-label", `移除 ${item.name}`);
+    remove.textContent = "×";
+    remove.addEventListener("click", () => {
+      pendingImages.splice(index, 1);
+      renderPendingImages();
+    });
+    card.append(image, remove);
+    elements.pendingImages.append(card);
+  });
+}
+
+function readImage(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error(`无法读取 ${file.name}`));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function addImages(files) {
+  const accepted = [...files].filter((file) => file.type.startsWith("image/"));
+  if (pendingImages.length + accepted.length > 4) return showToast("每次最多添加 4 张图片");
+  try {
+    for (const file of accepted) {
+      if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) throw new Error("图片只支持 JPEG、PNG 或 WebP");
+      if (file.size > 8 * 1024 * 1024) throw new Error(`${file.name} 超过 8MB`);
+      const dataUrl = await readImage(file);
+      pendingImages.push({ name: file.name, type: file.type, data: dataUrl.split(",", 2)[1], previewUrl: dataUrl });
+    }
+    renderPendingImages();
+  } catch (error) {
+    showToast(error.message);
+  } finally {
+    elements.imageInput.value = "";
+  }
+}
+
 async function submitPrompt(prompt) {
   const value = prompt.trim();
-  if (!value || currentStatus === "running") return;
+  if ((!value && !pendingImages.length) || currentStatus === "running") return;
+  const images = pendingImages;
   elements.input.value = "";
+  pendingImages = [];
+  renderPendingImages();
   resizeInput();
   try {
-    await api("/api/tasks", { method: "POST", body: JSON.stringify({ prompt: value }) });
+    await api("/api/tasks", { method: "POST", body: JSON.stringify({ prompt: value, images: images.map(({ name, type, data }) => ({ name, type, data })) }) });
   } catch (error) {
     elements.input.value = value;
+    pendingImages = images;
+    renderPendingImages();
     resizeInput();
     showToast(error.message);
   }
@@ -449,6 +496,12 @@ elements.composer.addEventListener("submit", (event) => {
   submitPrompt(elements.input.value);
 });
 elements.input.addEventListener("input", resizeInput);
+$("#attachButton").addEventListener("click", () => elements.imageInput.click());
+elements.imageInput.addEventListener("change", () => addImages(elements.imageInput.files));
+elements.input.addEventListener("paste", (event) => {
+  const images = [...event.clipboardData.files].filter((file) => file.type.startsWith("image/"));
+  if (images.length) addImages(images);
+});
 elements.input.addEventListener("keydown", (event) => {
   if ((event.metaKey || event.ctrlKey) && event.key === "Enter") submitPrompt(elements.input.value);
 });
@@ -464,33 +517,81 @@ document.querySelectorAll(".suggestions button").forEach((button) => {
   });
 });
 
+function activatePanel(panelId) {
+  document.querySelectorAll(".tab, .panel").forEach((element) => element.classList.remove("active"));
+  document.querySelector(`.tab[data-panel="${panelId}"]`)?.classList.add("active");
+  document.getElementById(panelId).classList.add("active");
+  document.body.classList.toggle("preview-page", panelId === "previewPanel");
+  if (panelId === "previewPanel") elements.preview.src = previewTarget(true);
+  if (panelId === "filesPanel") loadProjectFiles();
+}
+
+function setPreviewBackPosition(left, top) {
+  const button = $("#previewBackButton");
+  const margin = 8;
+  const maxLeft = Math.max(margin, window.innerWidth - button.offsetWidth - margin);
+  const maxTop = Math.max(margin, window.innerHeight - button.offsetHeight - margin);
+  const position = {
+    left: Math.min(Math.max(margin, left), maxLeft),
+    top: Math.min(Math.max(margin, top), maxTop)
+  };
+  button.style.left = `${position.left}px`;
+  button.style.top = `${position.top}px`;
+  button.style.right = "auto";
+  return position;
+}
+
+function restorePreviewBackPosition() {
+  try {
+    const position = JSON.parse(localStorage.getItem(previewBackPositionKey));
+    if (Number.isFinite(position?.left) && Number.isFinite(position?.top)) setPreviewBackPosition(position.left, position.top);
+  } catch {}
+}
+
 document.querySelectorAll(".tab").forEach((tab) => {
-  tab.addEventListener("click", () => {
-    document.querySelectorAll(".tab, .panel").forEach((element) => element.classList.remove("active"));
-    tab.classList.add("active");
-    document.getElementById(tab.dataset.panel).classList.add("active");
-    if (tab.dataset.panel === "previewPanel") elements.preview.contentWindow?.location.reload();
-    if (tab.dataset.panel === "filesPanel") loadProjectFiles();
-  });
+  tab.addEventListener("click", () => activatePanel(tab.dataset.panel));
 });
 
-$("#refreshButton").addEventListener("click", () => {
-  elements.preview.src = previewTarget(true);
+const previewBackButton = $("#previewBackButton");
+let previewBackDrag = null;
+let suppressPreviewBackClick = false;
+
+previewBackButton.addEventListener("pointerdown", (event) => {
+  const rect = previewBackButton.getBoundingClientRect();
+  previewBackDrag = { pointerId: event.pointerId, offsetX: event.clientX - rect.left, offsetY: event.clientY - rect.top, startX: event.clientX, startY: event.clientY, moved: false };
+  previewBackButton.setPointerCapture(event.pointerId);
 });
-$("#openButton").addEventListener("click", () => window.open(previewTarget(), "_blank", "noopener"));
-elements.fullscreen.addEventListener("click", togglePreviewFullscreen);
-document.addEventListener("fullscreenchange", () => {
-  if (nativePreviewFullscreen && !document.fullscreenElement) {
-    nativePreviewFullscreen = false;
-    setPreviewFullscreen(false);
+previewBackButton.addEventListener("pointermove", (event) => {
+  if (!previewBackDrag || previewBackDrag.pointerId !== event.pointerId) return;
+  if (Math.hypot(event.clientX - previewBackDrag.startX, event.clientY - previewBackDrag.startY) > 4) previewBackDrag.moved = true;
+  if (previewBackDrag.moved) setPreviewBackPosition(event.clientX - previewBackDrag.offsetX, event.clientY - previewBackDrag.offsetY);
+});
+previewBackButton.addEventListener("pointerup", (event) => {
+  if (!previewBackDrag || previewBackDrag.pointerId !== event.pointerId) return;
+  const moved = previewBackDrag.moved;
+  previewBackDrag = null;
+  previewBackButton.releasePointerCapture(event.pointerId);
+  if (moved) {
+    suppressPreviewBackClick = true;
+    const rect = previewBackButton.getBoundingClientRect();
+    localStorage.setItem(previewBackPositionKey, JSON.stringify({ left: rect.left, top: rect.top }));
   }
 });
-document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && document.body.classList.contains("preview-fullscreen") && !document.fullscreenElement) {
-    nativePreviewFullscreen = false;
-    setPreviewFullscreen(false);
+previewBackButton.addEventListener("pointercancel", () => { previewBackDrag = null; });
+previewBackButton.addEventListener("click", () => {
+  if (suppressPreviewBackClick) {
+    suppressPreviewBackClick = false;
+    return;
+  }
+  activatePanel("chatPanel");
+});
+window.addEventListener("resize", () => {
+  if (previewBackButton.style.left) {
+    const rect = previewBackButton.getBoundingClientRect();
+    setPreviewBackPosition(rect.left, rect.top);
   }
 });
+restorePreviewBackPosition();
 $("#settingsButton").addEventListener("click", () => {
   elements.tokenInput.value = token;
   elements.dialog.showModal();
