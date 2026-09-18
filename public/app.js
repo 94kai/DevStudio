@@ -13,6 +13,8 @@ let selectedFile = null;
 let fileTreeLoadedFor = null;
 let showHiddenFiles = false;
 let pendingImages = [];
+let resumeSyncTimer = null;
+let resumeSyncRunning = false;
 
 const elements = {
   connection: $("#connection"),
@@ -120,7 +122,12 @@ function renderProjects() {
     button.addEventListener("click", async () => {
       if (project.id === currentProject?.id) return elements.projectsDialog.close();
       try {
-        await api("/api/projects/switch", { method: "POST", body: JSON.stringify({ projectId: project.id }) });
+        const result = await api("/api/projects/switch", { method: "POST", body: JSON.stringify({ projectId: project.id }) });
+        if (result.removed) {
+          await loadState();
+          showToast(`项目目录不存在，已清理 ${project.name} 的记录`);
+          return;
+        }
         elements.projectsDialog.close();
         await loadState();
         showToast(`已切换到 ${project.name}`);
@@ -387,7 +394,7 @@ function connectEvents() {
   eventSource.addEventListener("context-changed", () => loadState());
 }
 
-async function loadState() {
+async function loadState({ refreshPreview = true, resetFiles = true } = {}) {
   try {
     const state = await api("/api/state");
     currentProject = state.project;
@@ -404,12 +411,14 @@ async function loadState() {
     elements.chatSubtitle.textContent = `${currentProject?.name || "当前项目"} · ${availableSessions.length} 个会话`;
     elements.modelBadge.querySelector("span").textContent = state.model || "默认模型";
     setStatus(state.status);
-    elements.preview.src = previewTarget();
-    selectedFile = null;
-    fileTreeLoadedFor = null;
-    elements.fileEditor.classList.add("hidden");
-    elements.filePlaceholder.classList.remove("hidden");
-    elements.saveFile.classList.add("hidden");
+    if (refreshPreview) elements.preview.src = previewTarget();
+    if (resetFiles) {
+      selectedFile = null;
+      fileTreeLoadedFor = null;
+      elements.fileEditor.classList.add("hidden");
+      elements.filePlaceholder.classList.remove("hidden");
+      elements.saveFile.classList.add("hidden");
+    }
     if (!eventSource || eventSource.readyState === EventSource.CLOSED) connectEvents();
   } catch (error) {
     setConnection("offline", "未连接");
@@ -417,6 +426,28 @@ async function loadState() {
     else showToast(error.message);
   }
 }
+
+function syncAfterResume() {
+  clearTimeout(resumeSyncTimer);
+  resumeSyncTimer = setTimeout(async () => {
+    if (document.visibilityState === "hidden" || resumeSyncRunning) return;
+    resumeSyncRunning = true;
+    try {
+      connectEvents();
+      await loadState({ refreshPreview: false, resetFiles: false });
+    } finally {
+      resumeSyncRunning = false;
+    }
+  }, 120);
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") syncAfterResume();
+});
+window.addEventListener("pageshow", (event) => {
+  if (event.persisted) syncAfterResume();
+});
+window.addEventListener("focus", syncAfterResume);
 
 function resizeInput() {
   elements.input.style.height = "auto";

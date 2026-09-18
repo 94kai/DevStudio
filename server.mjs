@@ -143,6 +143,14 @@ function getActiveSession() {
   return project.sessions.find((session) => session.id === state.activeSessionId) || project.sessions[0];
 }
 
+function projectDirectoryExists(project) {
+  try {
+    return existsSync(project.path) && statSync(project.path).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
 function saveState() {
   writeFileSync(STATE_FILE, JSON.stringify({
     projects: state.projects.map((project) => {
@@ -686,6 +694,25 @@ const server = http.createServer(async (request, response) => {
         const body = await readJson(request);
         const project = state.projects.find((item) => item.id === body.projectId);
         if (!project) return sendJson(response, 404, { error: "项目不存在" });
+        const removedProjectIds = state.projects.filter((item) => !projectDirectoryExists(item)).map((item) => item.id);
+        if (removedProjectIds.length) {
+          state.projects = state.projects.filter((item) => !removedProjectIds.includes(item.id));
+          if (!state.projects.length) {
+            const session = createSession();
+            const fallbackProject = createProject({ name: basename(ROOT_DIR), path: ROOT_DIR, previewUrl: DEFAULT_PREVIEW_URL, sessions: [session] });
+            fallbackProject.activeSessionId = session.id;
+            state.projects.push(fallbackProject);
+          }
+        }
+        if (removedProjectIds.includes(project.id)) {
+          const nextProject = state.projects.find((item) => item.id === state.activeProjectId) || state.projects[0];
+          state.activeProjectId = nextProject.id;
+          state.activeSessionId = nextProject.activeSessionId || nextProject.sessions[0].id;
+          connectedThreadId = null;
+          saveState();
+          broadcast("context-changed", { projectId: state.activeProjectId, sessionId: state.activeSessionId });
+          return sendJson(response, 200, { switched: false, removed: true, projectId: project.id });
+        }
         state.activeProjectId = project.id;
         state.activeSessionId = project.activeSessionId || project.sessions[0].id;
         connectedThreadId = null;
@@ -774,8 +801,12 @@ const server = http.createServer(async (request, response) => {
         connection: "keep-alive"
       });
       response.write(`event: status\ndata: ${JSON.stringify({ status: state.status })}\n\n`);
+      const heartbeat = setInterval(() => response.write(`: heartbeat ${Date.now()}\n\n`), 20000);
       listeners.add(response);
-      request.on("close", () => listeners.delete(response));
+      request.on("close", () => {
+        clearInterval(heartbeat);
+        listeners.delete(response);
+      });
       return;
     }
     if (request.method === "POST" && url.pathname === "/api/tasks") {
